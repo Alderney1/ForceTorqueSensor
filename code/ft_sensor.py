@@ -1,9 +1,9 @@
 __author__ = "Mats Larsen"
-__copyright__ = "SINTEF, NTNU 2013"
+__copyright__ = "Mats Larsen 2014"
 __credits__ = ["Morten Lind"]
 __license__ = "GPL"
 __maintainer__ = "Mats Larsen"
-__email__ = "matsla@{ntnu.no}"
+__email__ = "larsen.mats.87@gmail.com"
 __status__ = "Development"
 #--------------------------------------------------------------------
 #File: ft_sensor.py
