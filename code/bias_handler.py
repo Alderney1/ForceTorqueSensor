@@ -19,8 +19,8 @@ import traceback
 import threading
 import numpy as np
 
-from freqclass import FrequencyAnalysis as FA
-from chain import Chain
+#from freqclass import FrequencyAnalysis as FA
+#from chain import Chain
 #import matplotlib.pyplot as plt
 
 #--------------------------------------------------------------------
@@ -69,7 +69,7 @@ class BiasHandler(threading.Thread):
         self._log_level = log_level # information level
 
         # freq analyse class
-        self._fa = FA(name='FA#1',log_level=self._log_level)
+        #self._fa = FA(name='FA#1',log_level=self._log_level)
 
         #Threading
         threading.Thread.__init__(self)
@@ -86,6 +86,7 @@ class BiasHandler(threading.Thread):
             self._noise_band.clear()
 
         #Reset
+        """
         self._min_noise = Chain(name='Min_noise',elements=np.zeros(NUMBER_SIGNALS),data_type=np.float)
         self._max_noise = Chain(name='Max_noise',elements=np.zeros(NUMBER_SIGNALS),data_type=np.float)
         self._peak_to_peak = Chain(name='Peak_to_peak',elements=np.zeros(NUMBER_SIGNALS),data_type=np.float)
@@ -93,7 +94,7 @@ class BiasHandler(threading.Thread):
         self._mean = Chain(name='Mean',elements=np.zeros(NUMBER_SIGNALS),data_type=np.float)
         self._T = Chain(name='Threshold_lowest freqency',elements=np.zeros(NUMBER_SIGNALS),data_type=np.float)
         self._offset = np.zeros(NUMBER_SIGNALS,dtype=np.float)
-
+        """
         # self._y = np.zeros(weighed_filter_size)
         #self._x = np.zeros(filter_size)
     def get_is_in_noiseband(self):

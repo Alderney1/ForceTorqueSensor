@@ -17,17 +17,25 @@ Choose of typeconnector and streamming type and sampling periode
 #--------------------------------------------------------------------
 import traceback
 import time
+import sys
 import threading
 import numpy as np
-from timermanager import TimerManager as TM
-from ati_interface import ATI_INTERFACE
+#from timermanager import TimerManager as TM
+from ati_controller import ATIController
 from bias_handler import BiasHandler
+sys.path.append('C:\mats\git_mats\pymath3d\math3d')
 import math3d as m3d
+sys.path.remove('C:\mats\git_mats\pymath3d\math3d')
+
 from math3d.vector import Vector
 from math3d.transform import Transform
-from math3d.dynamics.wrench import OrigoWrench
-from chain import Chain
-from pymoco.controller_manager import ControllerManager as CM
+sys.path.append('C:\mats\git_mats\pymath3d\math3d\dynamics')
+from wrench import OrigoWrench
+sys.path.remove('C:\mats\git_mats\pymath3d\math3d\dynamics')
+
+
+#from chain import Chain
+#from pymoco.controller_manager import ControllerManager as CM
 
 #--------------------------------------------------------------------
 #CONSTANTS
@@ -79,10 +87,9 @@ class FT_Sensor(threading.Thread):
                  bias_type='static',
                  time_store_data = 4, # seconds for storing data
                  collision_transform=Transform(),
-                 no_data_timeout = 1.5, # timeout for the sensor to wait for data
+                 no_data_timeout = 1.0, # timeout for the sensor to wait for data
                  force_threshold=2, # to detect collision by a threshold
                  sensor_timeout=0.2,
-                 cm=None, # pymoco controller
                  log_level=3): # information level
         """Init will set the streaming to 'STOP', Has to enabled afterwards.
         Initilize connector here."""
@@ -101,11 +108,11 @@ class FT_Sensor(threading.Thread):
         self._no_data_timeout = no_data_timeout
         self._sensor_timeout = sensor_timeout
         self._force_threshold = force_threshold
-        self._cm = cm
+        #self._cm = cm
         #Event
-        self._contact_translation = threading.Condition() # trigger event for contact change
+        self._contact_translation = threading.Event() # trigger event for contact change
         self._contact_status = threading.Condition() # status on contact
-        self._ft_status = threading.Condition() # trigger to incidate new data for ft data
+        self._ft_status = threading.Event() # trigger to incidate new data for ft data
 
         self._event_bias = threading.Event() # trigger to update bias
         self._event_bias.clear()
@@ -140,7 +147,7 @@ class FT_Sensor(threading.Thread):
 
         #Initialize the the connector
         if self._typeConnector == 'ATI':
-            self._ft = ATI_INTERFACE(host=self._host,
+            self._ft = ATIController(host=self._host,
                            port=self._port,
                            name=name,
                            timestamps=None,
@@ -175,7 +182,9 @@ class FT_Sensor(threading.Thread):
 
     def get_bias_force(self):
         """Returning bias force."""
+        print(self._bh.get_bias_force())
         return self._bh.get_bias_force()
+        #
 
     def get_bias_torque(self):
         """Returning bias torque."""
@@ -187,15 +196,17 @@ class FT_Sensor(threading.Thread):
             False = no collision"""
         log('Performing Get ft' , self._log_level)
         if sync != 0:
-            self._ft_status.acquire()
-            if self._ft_status.wait(sync) == True:
-                self._ft_status.release()
-                return self._force_data, self._torque_data
+            self._ft_status.wait(sync)
+            if self._ft_status.is_set():
+                self._ft_status.clear()
+                return self._force_data, None
             else:
+                self._ft_status.clear()
                 return None,None
 
         else:
             log('Not SYNC', self._log_level)
+            self._ft_status.clear()
             return self._force_data, self._torque_data
     ft = property(get_ft, "Contact property.")
 
@@ -269,25 +280,24 @@ class FT_Sensor(threading.Thread):
             False = no collision"""
         log('Performing Get contact' , self._log_level)
         if sync == True:
-            self._contact_translation.acquire()
             self._contact_translation.wait()
-            self._contact_translation.release()
-            return self._contact
+            self._contact_translation.clear()
+            return self._force_contact
         else:
-            return self._contact
-    translation = property(get_contact_translation, "Contact property.")
+            return self._force_contact
 
     def get_contact(self, sync=None):
         """ Get the status of the collision. True = collision.
             False = no collision"""
         log('Performing Get contact' , self._log_level)
         if sync != 0:
-            self._contact_status.acquire()
-            if self._contact_status.wait(sync) == True:
-                self._contact_status.release()
+            self._ft_status.wait(sync)
+            if self._ft_status.is_set() == True:
                 log(str(self._force_contact), self._log_level)
+                self._ft_status.clear()
                 return self._force_contact
             else:
+                self._ft_status.clear()
                 return None
 
         else:
@@ -304,23 +314,27 @@ class FT_Sensor(threading.Thread):
         log('Performing wait for ilde, mode : ' + str(mode),self._log_level)
         """Wait for a specific mode."""
         if mode == 'UPDATE_BIAS':
-            e = self._wait_updatebias_mode.wait(timeout)
+            self._wait_updatebias_mode.wait(timeout)
+            e = self._wait_updatebias_mode.isSet()
         elif mode == 'STOP':
-            e = self._wait_stop_mode.wait(timeout)
+            self._wait_stop_mode.wait(timeout)
+            e = self._wait_stop_mode.isSet() 
         elif mode == 'AVG_REALTIME':
-            e = self._wait_avg_mode.wait(timeout)
+            self._wait_avg_mode.wait(timeout)
+            e = self._wait_avg_mode.isSet()
         elif mode == 'REALTIME_BUFFERED':
-            e = self._wait_buffered_mode.wait(timeout)
+            self._wait_buffered_mode.wait(timeout)
+            e = self._wait_buffered_mode.isSet()
         elif mode == 'LOGGING_DATA':
             e = self._wait_logging_data_mode.wait(timeout)
         else:
-            raise self.Error('Given mode is not known : ' + '"{}"'.format(mode))
+            raise self.Error('Given mode is not known : ' + (mode))
 
         if e == True:
-            log(mode + ' is in process :'  + '"{}"'.format(mode), ALWAYS_LOG_LEVEL)
+            log(mode + ' is in process :'  + (mode), ALWAYS_LOG_LEVEL)
         else:
             raise self.Error(mode + ' is not swicted in the given time :: '
-                             + '"{}"'.format(timeout))
+                             + str(timeout))
 
     def _infinite_realtime_mode(self):
         """Infinite realtime mode for ft-sensor."""
@@ -470,15 +484,13 @@ class FT_Sensor(threading.Thread):
     def _notify(self):
         """Notify to other threads."""
         log('Performing notify', self._log_level)
-        self._contact_status.acquire()
-        self._contact_status.notify()
-        self._contact_status.release()
+        self._ft_status.set()
+       
         if self._previous_contact != self._force_contact:
             self._previous_contact = self._force_contact
             #Notify change in status of contact
-            self._contact_translation.acquire()
-            self._contact_translation.notify()
-            self._contact_translation.release()
+            self._contact_translation.set()
+         
 
     def _update_bias(self):
         """Update bias, there are two modes, static and dynamic."""
@@ -536,6 +548,8 @@ class FT_Sensor(threading.Thread):
         bias_force = self._bh.get_bias_force() # bias force
         f_mean = np.average(f,axis=0)
         biased = f_mean - bias_force
+        self._force_data = biased
+        #print(self._force_data)
         if np.linalg.norm(biased) > self._force_threshold:
             self._force_contact = True # Contact
         else:
@@ -596,7 +610,7 @@ class FT_Sensor(threading.Thread):
 
             if self._mode !='LOGGING_DATA' and self._mode !='STOP':
                 self._break_mode()
-                self.wait_for_control() # wait for the controll to complete
+                #self.wait_for_control() # wait for the controll to complete
                 pass
             #start = time.time()
             try:
@@ -661,7 +675,8 @@ class FT_Sensor(threading.Thread):
             return True
         else:
             return False
-
+"""
     def __repr__(self):
-        """String represenstation of the FT-sensor."""
+        String represenstation of the FT-sensor.
         return ('Name:{self._name}, Force Threshold:{self._force_threshold}, Torque Threshold:{self._torque_threshold}').format(self=self)
+"""
